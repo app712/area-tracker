@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>エリアトラッカー 管理画面（新規顧客登録）</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+
+  <style>
+    :root {
+      --c-primary: #2563eb;
+      --c-primary-dark: #1d4ed8;
+      --c-primary-light: #dbeafe;
+      --c-bg: #f1f5f9;
+      --c-surface: #ffffff;
+      --c-text: #0f172a;
+      --c-text-muted: #64748b;
+      --c-border: #e2e8f0;
+      --c-danger: #dc2626;
+      --c-success: #16a34a;
+      --shadow-sm: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.1);
+      --shadow-md: 0 4px 12px rgba(15,23,42,.14);
+      --shadow-lg: 0 16px 40px rgba(15,23,42,.22);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 22px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--c-text); -webkit-font-smoothing: antialiased;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+      background:
+        radial-gradient(circle at 15% 15%, #3b82f6 0%, transparent 45%),
+        radial-gradient(circle at 85% 88%, #1e40af 0%, transparent 50%),
+        linear-gradient(160deg, #1e3a8a 0%, #1e293b 100%);
+    }
+    .card {
+      background: var(--c-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+      max-width: 440px; width: 100%; padding: 36px 32px;
+    }
+    .card-icon {
+      width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dark));
+      display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-md);
+    }
+    .card-icon svg { width: 26px; height: 26px; }
+    h1 { margin: 0 0 4px; font-size: 19px; font-weight: 900; text-align: center; letter-spacing: .02em; }
+    .subtitle { margin: 0 0 26px; font-size: 12px; color: var(--c-text-muted); text-align: center; font-weight: 500; }
+
+    fieldset { border: none; padding: 0; margin: 0 0 20px; }
+    legend { font-size: 12px; font-weight: 700; color: var(--c-text-muted); margin-bottom: 8px; padding: 0; }
+    label.field { display: block; margin-bottom: 12px; }
+    label.field span { display: block; font-size: 12px; font-weight: 700; color: var(--c-text-muted); margin-bottom: 5px; }
+    .input-row { display: flex; gap: 8px; }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--c-border); border-radius: var(--radius-sm);
+      font-size: 14px; font-family: inherit; background: #f8fafc; transition: border-color .15s, box-shadow .15s, background .15s;
+    }
+    input:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 3px var(--c-primary-light); background: #fff; }
+    .gen-btn {
+      flex-shrink: 0; padding: 0 14px; border: 1.5px solid var(--c-border); border-radius: var(--radius-sm);
+      background: #f8fafc; color: var(--c-text-muted); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    }
+    .gen-btn:hover { background: var(--c-primary-light); border-color: var(--c-primary); color: var(--c-primary-dark); }
+
+    button[type="submit"] {
+      width: 100%; padding: 14px 20px; border: none; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 15px; font-weight: 700; font-family: inherit; letter-spacing: .02em; color: #fff;
+      background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dark)); box-shadow: var(--shadow-sm);
+      transition: transform .15s, box-shadow .15s;
+    }
+    button[type="submit"]:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+    button[type="submit"]:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; }
+
+    .message { display: none; padding: 12px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; margin-bottom: 18px; line-height: 1.6; }
+    .message.error { display: block; background: #fee2e2; color: var(--c-danger); }
+    .message.success { display: block; background: #dcfce7; color: #15803d; }
+    .message a { color: inherit; font-weight: 700; }
+    .message dl { margin: 8px 0 0; }
+    .message dt { font-weight: 700; opacity: .7; }
+    .message dd { margin: 0 0 6px; }
+
+    .back-link { display: block; text-align: center; margin-top: 18px; font-size: 12px; color: var(--c-text-muted); text-decoration: none; }
+    .back-link:hover { color: var(--c-primary); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>
+    <h1>新規顧客登録</h1>
+    <div class="subtitle">エリアトラッカー 管理画面</div>
+
+    <div id="message" class="message"></div>
+
+    <form id="register-form">
+      <fieldset>
+        <legend>管理者認証</legend>
+        <label class="field">
+          <span>管理者パスワード</span>
+          <input type="password" id="admin-password" autocomplete="off" required />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>顧客情報</legend>
+        <label class="field">
+          <span>顧客名（会社名・担当者名）</span>
+          <input type="text" id="client-name" required />
+        </label>
+        <label class="field">
+          <span>メールアドレス（ログイン情報の送付先）</span>
+          <input type="email" id="client-email" required />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>現場アプリ ログイン情報</legend>
+        <label class="field">
+          <span>ユーザーID</span>
+          <input type="text" id="client-username" autocomplete="off" required />
+        </label>
+        <label class="field">
+          <span>パスワード</span>
+          <div class="input-row">
+            <input type="text" id="client-password" autocomplete="off" required />
+            <button type="button" class="gen-btn" id="gen-password-btn">自動生成</button>
+          </div>
+        </label>
+      </fieldset>
+
+      <button type="submit" id="submit-btn">顧客を登録する</button>
+    </form>
+
+    <a class="back-link" href="index.html">← 現場用マップアプリに戻る</a>
+  </div>
+
+  <script>
+    function generatePassword(length) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+      let result = "";
+      const values = new Uint32Array(length);
+      crypto.getRandomValues(values);
+      for (let i = 0; i < length; i++) result += chars[values[i] % chars.length];
+      return result;
+    }
+
+    document.getElementById("gen-password-btn").addEventListener("click", () => {
+      document.getElementById("client-password").value = generatePassword(10);
+    });
+
+    function showMessage(type, html) {
+      const el = document.getElementById("message");
+      el.className = "message " + type;
+      el.innerHTML = html;
+    }
+
+    document.getElementById("register-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      if (!window.APP_CONFIG || !window.APP_CONFIG.CONFIG_GAS_URL) {
+        showMessage("error", "設定ファイル(config.js)が見つかりません。config.example.jsをコピーしてconfig.jsを作成してください。");
+        return;
+      }
+
+      const btn = document.getElementById("submit-btn");
+      btn.disabled = true;
+      btn.innerText = "登録中...";
+      document.getElementById("message").className = "message";
+
+      const payload = {
+        action: "register_client",
+        adminPassword: document.getElementById("admin-password").value,
+        name: document.getElementById("client-name").value.trim(),
+        email: document.getElementById("client-email").value.trim(),
+        username: document.getElementById("client-username").value.trim(),
+        password: document.getElementById("client-password").value.trim()
+      };
+
+      fetch(window.APP_CONFIG.CONFIG_GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showMessage("success",
+            "顧客の登録が完了しました。ログイン情報はメールでも送信済みです。<dl>" +
+            "<dt>顧客コード</dt><dd>" + data.clientCode + "</dd>" +
+            "<dt>ユーザーID</dt><dd>" + payload.username + "</dd>" +
+            "<dt>パスワード</dt><dd>" + payload.password + "</dd>" +
+            "<dt>管理用シート</dt><dd><a href=\"" + data.spreadsheetUrl + "\" target=\"_blank\" rel=\"noopener\">開く</a></dd>" +
+            "</dl>"
+          );
+          document.getElementById("register-form").reset();
+        } else {
+          showMessage("error", data.error || "登録に失敗しました。");
+        }
+      })
+      .catch(err => {
+        showMessage("error", "通信エラー: " + err.message);
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.innerText = "顧客を登録する";
+      });
+    });
+  </script>
+</body>
+</html>

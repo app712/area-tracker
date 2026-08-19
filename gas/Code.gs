@@ -2,17 +2,19 @@
 // 【設定変数】※スクリプトプロパティから読み込みます（コードに直接書かないでください）
 // 設定方法: Apps Scriptエディタ左側の「プロジェクトの設定」(⚙アイコン)
 //          →「スクリプト プロパティ」→「スクリプト プロパティを追加」で
-//          以下4つのキー名を登録してください。
+//          以下5つのキー名を登録してください。
 //   MASTER_SHEET_ID   : マスター管理シートのID
 //   GOOGLE_API_KEY    : Google Maps APIキー（ジオコーディング用）
 //   PARENT_FOLDER_ID  : 顧客シートの保存先GoogleドライブフォルダID
 //   FIELD_APP_URL     : 現場用マップアプリ（Index）の公開URL
+//   ADMIN_PASSWORD    : 新規顧客登録画面（admin.html）用の管理者パスワード
 // =====================================================================
 var SCRIPT_PROPS = PropertiesService.getScriptProperties();
 var MASTER_SHEET_ID = SCRIPT_PROPS.getProperty('MASTER_SHEET_ID');
 var GOOGLE_API_KEY = SCRIPT_PROPS.getProperty('GOOGLE_API_KEY');
 var PARENT_FOLDER_ID = SCRIPT_PROPS.getProperty('PARENT_FOLDER_ID');
 var FIELD_APP_URL = SCRIPT_PROPS.getProperty('FIELD_APP_URL');
+var ADMIN_PASSWORD = SCRIPT_PROPS.getProperty('ADMIN_PASSWORD');
 
 // =====================================================================
 // 初回認証用テスト関数
@@ -40,6 +42,9 @@ function doPost(e) {
     if (action === "get_clients") { return createJsonResponse({ success: true, clients: [] }); }
 
     if (action === "register_client") {
+      if (!ADMIN_PASSWORD) throw new Error("管理者パスワードが未設定です。スクリプト プロパティにADMIN_PASSWORDを登録してください。");
+      if (params.adminPassword !== ADMIN_PASSWORD) throw new Error("管理者パスワードが正しくありません。");
+
       var name = params.name; var email = params.email; var username = params.username; var password = params.password;
       if (!name || !email || !username || !password) throw new Error("すべての必須項目を入力してください");
 
@@ -70,7 +75,7 @@ function doPost(e) {
         throw new Error("メール送信に失敗しました。詳細: " + mailError.message);
       }
       
-      return createJsonResponse({ success: true, clientCode: newCode, clientName: name });
+      return createJsonResponse({ success: true, clientCode: newCode, clientName: name, spreadsheetUrl: newSs.getUrl() });
     }
 
     if (action === "upload_csv") {
