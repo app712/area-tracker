@@ -1,0 +1,12 @@
+# 実際のAPIキー・GAS URLを含む設定ファイル（config.example.js を参照して作成）
+config.js
+
+# Cloudflare / Node関連
+node_modules/
+.wrangler/
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db

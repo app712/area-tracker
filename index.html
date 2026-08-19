@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>現場用 エリアトラッカー（本番環境）</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+  <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
+  <script src="config.js"></script>
+
+  <style>
+    :root {
+      --c-primary: #2563eb;
+      --c-primary-dark: #1d4ed8;
+      --c-primary-light: #dbeafe;
+      --c-bg: #f1f5f9;
+      --c-surface: #ffffff;
+      --c-text: #0f172a;
+      --c-text-muted: #64748b;
+      --c-border: #e2e8f0;
+      --shadow-sm: 0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.1);
+      --shadow-md: 0 4px 12px rgba(15,23,42,.14);
+      --shadow-lg: 0 16px 40px rgba(15,23,42,.22);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 22px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--c-bg); color: var(--c-text); -webkit-font-smoothing: antialiased; }
+    #app-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; display: none; }
+    #map { height: 100%; width: 100%; }
+
+    /* ===== ログイン画面 ===== */
+    #login-panel {
+      position: absolute; inset: 0; z-index: 2000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+      background:
+        radial-gradient(circle at 15% 15%, #3b82f6 0%, transparent 45%),
+        radial-gradient(circle at 85% 88%, #1e40af 0%, transparent 50%),
+        linear-gradient(160deg, #1e3a8a 0%, #1e293b 100%);
+    }
+    .login-box {
+      background: var(--c-surface); padding: 40px 32px; border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg); max-width: 380px; width: 100%; text-align: center;
+    }
+    .login-icon {
+      width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 16px;
+      background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dark));
+      display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-md);
+    }
+    .login-icon svg { width: 28px; height: 28px; }
+    .login-title { margin: 0 0 4px; color: var(--c-text); font-size: 21px; font-weight: 900; letter-spacing: .02em; }
+    .login-subtitle { margin: 0 0 28px; color: var(--c-text-muted); font-size: 13px; font-weight: 500; }
+    .login-box input {
+      width: 100%; padding: 14px 16px; border: 1.5px solid var(--c-border); border-radius: var(--radius-sm);
+      box-sizing: border-box; margin-bottom: 14px; font-size: 15px; font-family: inherit; background: #f8fafc;
+      transition: border-color .15s, box-shadow .15s, background .15s;
+    }
+    .login-box input:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 3px var(--c-primary-light); background: #fff; }
+    .login-box button {
+      background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dark)); color: #fff; border: none;
+      padding: 15px 20px; font-size: 15px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 700;
+      width: 100%; margin-top: 4px; transition: transform .15s, box-shadow .15s; box-shadow: var(--shadow-sm);
+      font-family: inherit; letter-spacing: .02em;
+    }
+    .login-box button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+    .login-box button:active:not(:disabled) { transform: translateY(0); }
+    .login-box button:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; }
+
+    /* ===== ローディング ===== */
+    #loading {
+      position: absolute; inset: 0; z-index: 1500;
+      background: rgba(255,255,255,.97); backdrop-filter: blur(4px);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px; color: var(--c-text-muted);
+    }
+    .spinner { width: 40px; height: 40px; border: 4px solid var(--c-primary-light); border-top: 4px solid var(--c-primary); border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== ヘッダー ===== */
+    #app-header {
+      position: absolute; top: 0; left: 0; width: 100%; z-index: 1100;
+      display: none; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 12px 16px; background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+      box-shadow: var(--shadow-sm); box-sizing: border-box;
+    }
+    #app-header-title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 900; color: var(--c-primary-dark); white-space: nowrap; flex-shrink: 0; }
+    #app-header-title svg { width: 16px; height: 16px; }
+    #app-header-client { font-size: 12px; font-weight: 600; color: var(--c-text-muted); flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #logout-btn {
+      width: 30px; height: 30px; border-radius: 50%; border: none; background: #f1f5f9; color: var(--c-text-muted);
+      cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .15s, color .15s;
+    }
+    #logout-btn:hover { background: #fee2e2; color: #dc2626; }
+    #logout-btn svg { width: 15px; height: 15px; }
+
+    /* ===== フィルター ===== */
+    #filter-container {
+      position: absolute; top: 62px; left: 50%; transform: translateX(-50%);
+      background: rgba(255,255,255,.95); backdrop-filter: blur(8px);
+      padding: 8px 10px; border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 1000;
+      display: none; flex-wrap: wrap; gap: 6px; align-items: center;
+      width: calc(100% - 32px); max-width: 480px;
+    }
+    .filter-hint { font-size: 11px; font-weight: 700; color: var(--c-text-muted); padding-right: 2px; }
+    .filter-label {
+      font-size: 12px; font-weight: 700; color: var(--c-text); display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+      background: #f8fafc; padding: 6px 10px 6px 8px; border-radius: 999px; border: 1.5px solid var(--c-border);
+      transition: background .15s, border-color .15s, opacity .15s;
+    }
+    .filter-label::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--chip-color, #94a3b8); flex-shrink: 0; }
+    .filter-label:not(.is-checked) { opacity: .5; }
+    .filter-label.is-checked { background: var(--chip-bg, #f1f5f9); border-color: var(--chip-color, #94a3b8); }
+    .filter-label input { display: none; }
+
+    /* ===== マーカー吹き出し ===== */
+    .info-window { padding: 4px 2px; max-width: 320px; min-width: 240px; font-family: 'Noto Sans JP', sans-serif; }
+    .info-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 2px solid var(--c-primary-light); padding-bottom: 8px; margin-bottom: 12px; }
+    .info-title { margin: 0; font-size: 14px; color: var(--c-text); font-weight: 700; line-height: 1.4; }
+    .nav-btn {
+      background: #16a34a; color: white; text-decoration: none; padding: 6px 12px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; justify-content: center;
+      white-space: nowrap; box-shadow: var(--shadow-sm); flex-shrink: 0;
+    }
+    .item-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+    .item-row b { color: var(--c-text-muted); font-weight: 700; }
+    .control-group { display: flex; gap: 6px; align-items: center; }
+    select {
+      padding: 6px 8px; font-size: 12px; font-weight: 600; border: 1.5px solid var(--c-border); border-radius: var(--radius-sm);
+      background: #f8fafc; cursor: pointer; font-family: inherit; color: var(--c-text);
+    }
+    select:focus { outline: none; border-color: var(--c-primary); }
+
+    /* ===== 現在地ボタン ===== */
+    #location-btn {
+      position: absolute; bottom: 24px; right: 20px; z-index: 1000; background: var(--c-surface); border: none;
+      border-radius: 999px; padding: 12px 18px; box-shadow: var(--shadow-md); cursor: pointer;
+      display: flex; align-items: center; gap: 7px; transition: transform .15s, box-shadow .15s;
+      font-family: inherit; color: var(--c-text);
+    }
+    #location-btn:hover { transform: scale(1.04); box-shadow: var(--shadow-lg); }
+    #location-btn svg { width: 18px; height: 18px; color: var(--c-primary); flex-shrink: 0; }
+    #location-btn.is-loading svg { animation: spin 1s linear infinite; }
+    #location-btn-label { font-size: 13px; font-weight: 700; }
+
+    /* ===== 保存インジケーター ===== */
+    #save-indicator {
+      position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 1000;
+      background: rgba(15,23,42,.88); color: white; padding: 10px 20px; border-radius: 999px;
+      font-size: 13px; display: none; font-weight: 700; box-shadow: var(--shadow-md); white-space: nowrap;
+    }
+
+    .custom-pin { width: 22px; height: 22px; border-radius: 50%; border: 3px solid white; box-shadow: var(--shadow-md); cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <div id="login-panel">
+    <div class="login-box">
+      <div class="login-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+      <div class="login-title">エリアトラッカー</div>
+      <div class="login-subtitle">現場用マップアプリ ログイン</div>
+      <input type="text" id="login-username" placeholder="ユーザーID" autocomplete="username" required />
+      <input type="password" id="login-password" placeholder="パスワード" autocomplete="current-password" required />
+      <button id="login-btn">ログインしてマップを開く</button>
+    </div>
+  </div>
+
+  <div id="app-container">
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">マップを読み込んでいます...</div>
+    </div>
+
+    <div id="app-header">
+      <div id="app-header-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        エリアトラッカー
+      </div>
+      <div id="app-header-client"></div>
+      <button id="logout-btn" title="ログアウト">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+
+    <div id="filter-container"></div>
+    <div id="map"></div>
+
+    <button id="location-btn" title="現在地を取得">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="6"/></svg>
+      <span id="location-btn-label">現在地</span>
+    </button>
+    <div id="save-indicator">データ保存中...</div>
+  </div>
+
+  <script>
+    // =========================================================
+    // 【重要設定変数】※実際の値は config.js で定義してください（Git管理外）
+    // config.example.js を config.js としてコピーし、値を設定します。
+    // =========================================================
+    if (!window.APP_CONFIG || !window.APP_CONFIG.GOOGLE_API_KEY || !window.APP_CONFIG.CONFIG_GAS_URL) {
+      alert("設定ファイル(config.js)が見つかりません。config.example.jsをコピーしてconfig.jsを作成し、値を設定してください。");
+    }
+    const GOOGLE_API_KEY = window.APP_CONFIG && window.APP_CONFIG.GOOGLE_API_KEY;
+    const CONFIG_GAS_URL = window.APP_CONFIG && window.APP_CONFIG.CONFIG_GAS_URL;
+    // =========================================================
+
+    (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
+      key: GOOGLE_API_KEY,
+      v: "weekly"
+    });
+
+    const SETTINGS = { statuses: ["未訪問", "訪問済み"], evaluations: ["A", "B", "C", "なし"] };
+
+    function getPinColor(status, evalVal) {
+      if (status === SETTINGS.statuses[0]) return "#2b6cb0";
+      if (evalVal === "A") return "#e53e3e";
+      if (evalVal === "B") return "#38a169";
+      if (evalVal === "C") return "#718096";
+      return "#d69e2e";
+    }
+
+    let map = null, infoWindow = null, markersArray = [], userMarker = null, globalData = [];
+    let currentSheetId = "";
+    let AdvancedMarkerElement = null;
+    let markerCluster = null;
+
+    document.getElementById("login-btn").addEventListener("click", () => {
+      const username = document.getElementById("login-username").value.trim();
+      const password = document.getElementById("login-password").value.trim();
+      const btn = document.getElementById("login-btn");
+
+      if (!username || !password) return alert("ユーザーIDとパスワードを入力してください。");
+
+      btn.disabled = true;
+      btn.innerText = "認証中...";
+
+      fetch(CONFIG_GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "get_map_data", username: username, password: password })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          currentSheetId = data.spreadsheetId;
+          globalData = data.data;
+
+          if (globalData.length === 0) {
+             alert("データが登録されていません。管理画面からCSVをアップロードしてください。");
+             btn.disabled = false;
+             btn.innerText = "ログインしてマップを開く";
+             return;
+          }
+
+          document.getElementById("login-panel").style.display = "none";
+          document.getElementById("app-container").style.display = "block";
+          document.getElementById("loading").style.display = "flex";
+
+          document.getElementById("app-header-client").textContent = (data.clientName || "") + " 様";
+          document.getElementById("app-header").style.display = "flex";
+
+          setTimeout(initializeMap, 500);
+        } else {
+          throw new Error(data.error);
+        }
+      })
+      .catch(err => {
+        alert(err.message);
+        btn.disabled = false;
+        btn.innerText = "ログインしてマップを開く";
+      });
+    });
+
+    document.getElementById("login-password").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("login-btn").click();
+    });
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      if (confirm("ログアウトしますか？")) location.reload();
+    });
+
+    async function initializeMap() {
+      const { Map } = await google.maps.importLibrary("maps");
+      const { AdvancedMarkerElement: Marker } = await google.maps.importLibrary("marker");
+      AdvancedMarkerElement = Marker;
+
+      map = new Map(document.getElementById("map"), {
+        center: { lat: globalData[0].lat, lng: globalData[0].lng },
+        zoom: 13,
+        mapId: "DEMO_MAP_ID",
+        disableDefaultUI: true,
+        zoomControl: true,
+        fullscreenControl: true
+      });
+
+      infoWindow = new google.maps.InfoWindow();
+      buildFilterUI();
+      buildAllMarkers();
+      applyFilters();
+      document.getElementById("loading").style.display = "none";
+    }
+
+    function buildFilterUI() {
+      const container = document.getElementById("filter-container");
+      container.innerHTML = "<div class='filter-hint'>表示切替</div>";
+      const colorMap = {
+        [SETTINGS.statuses[0]]: { dot: "#2b6cb0", bg: "#dbeafe" },
+        "A": { dot: "#e53e3e", bg: "#fee2e2" },
+        "B": { dot: "#38a169", bg: "#dcfce7" },
+        "C": { dot: "#718096", bg: "#f1f5f9" },
+        "なし": { dot: "#d69e2e", bg: "#fef3c7" }
+      };
+      const options = [{ val: SETTINGS.statuses[0], label: SETTINGS.statuses[0] }];
+      SETTINGS.evaluations.forEach(ev => options.push({ val: ev, label: `見込み:${ev}` }));
+      options.forEach(opt => {
+        const lbl = document.createElement("label"); lbl.className = "filter-label is-checked";
+        const colors = colorMap[opt.val] || { dot: "#94a3b8", bg: "#f1f5f9" };
+        lbl.style.setProperty("--chip-color", colors.dot);
+        lbl.style.setProperty("--chip-bg", colors.bg);
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "filter-cb"; cb.value = opt.val; cb.checked = true;
+        cb.addEventListener("change", () => { lbl.classList.toggle("is-checked", cb.checked); applyFilters(); });
+        lbl.appendChild(cb); lbl.appendChild(document.createTextNode(opt.label));
+        container.appendChild(lbl);
+      });
+      container.style.display = "flex";
+    }
+
+    // 表示用ラベルを生成（建物名 + 苗字 + 世帯人数）
+    function getDisplayLabel(displayName, lastName, householdCount, fallbackAddress) {
+      let label = "";
+      if (displayName) label += displayName;
+      if (lastName) {
+        if (label) label += " ";
+        label += lastName + "様";
+      }
+      let finalLabel = label || fallbackAddress;
+
+      const count = parseInt(householdCount) || 1;
+      if (count > 1) {
+        finalLabel += `（${count}名）`;
+      }
+
+      return finalLabel;
+    }
+
+    function buildAllMarkers() {
+      markersArray = [];
+      const groups = {};
+
+      globalData.forEach(v => {
+        if (v.lat && v.lng) {
+          const key = `${v.lat},${v.lng}`;
+          if (!groups[key]) groups[key] = { lat: v.lat, lng: v.lng, voters: [] };
+          groups[key].voters.push(v);
+        }
+      });
+
+      Object.values(groups).forEach(grp => {
+        const count = grp.voters.length;
+        let radius = count > 6 ? 0.00012 : (count > 3 ? 0.00008 : 0.00005);
+        if (count === 1) radius = 0.00003;
+
+        grp.voters.forEach((v, idx) => {
+          let oLat = 0, oLng = 0;
+          if (count > 1) {
+            const angle = (Math.PI * 2 * idx) / count;
+            oLat = radius * Math.cos(angle); oLng = (radius / Math.cos(grp.lat * Math.PI / 180)) * Math.sin(angle);
+          }
+
+          // 世帯人数を含んだラベルを取得
+          const titleLabel = getDisplayLabel(v.displayName, v.lastName, v.householdCount, v.address);
+
+          const pinDiv = document.createElement("div");
+          pinDiv.className = "custom-pin";
+          pinDiv.style.backgroundColor = getPinColor(v.status, v.evaluation);
+          pinDiv.title = titleLabel;
+
+          const marker = new AdvancedMarkerElement({ position: { lat: grp.lat + oLat, lng: grp.lng + oLng }, content: pinDiv });
+          marker.voterData = v;
+          marker.addListener("gmp-click", () => showInfoWindow(marker, v, grp.lat, grp.lng));
+          markersArray.push(marker);
+        });
+      });
+    }
+
+    function applyFilters() {
+      const checked = Array.from(document.querySelectorAll(".filter-cb:checked")).map(cb => cb.value);
+      const defStatus = SETTINGS.statuses[0];
+
+      const visibleMarkers = markersArray.filter(m => {
+        const d = m.voterData;
+        return (d.status === defStatus && checked.includes(defStatus)) || (d.status !== defStatus && checked.includes(d.evaluation));
+      });
+
+      if (markerCluster) {
+        markerCluster.clearMarkers();
+      }
+      markerCluster = new markerClusterer.MarkerClusterer({ map, markers: visibleMarkers });
+    }
+
+    function showInfoWindow(marker, voter, groupLat, groupLng) {
+      // 吹き出しのタイトルにも人数表示を適用
+      const infoWindowLabel = getDisplayLabel(voter.displayName, voter.lastName, voter.householdCount, voter.address);
+      const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${groupLat},${groupLng}`;
+
+      const container = document.createElement("div"); container.className = "info-window";
+      const header = document.createElement("div"); header.className = "info-header";
+      header.innerHTML = `<div class="info-title">${infoWindowLabel}</div><a href="${navUrl}" target="_blank" rel="noopener" class="nav-btn"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>ルート案内</a>`;
+      container.appendChild(header);
+      const row = document.createElement("div"); row.className = "item-row"; row.innerHTML = `<span><b>状況・見込み度:</b></span>`;
+      const controlGroup = document.createElement("div"); controlGroup.className = "control-group";
+
+      const statusSelect = document.createElement("select"); statusSelect.className = "status-select data-trigger"; statusSelect.setAttribute("data-id", voter.id); statusSelect.setAttribute("data-row", voter.publicRow);
+      SETTINGS.statuses.forEach(s => { statusSelect.add(new Option(s, s, false, s === voter.status)); });
+      controlGroup.appendChild(statusSelect);
+
+      const evalSelect = document.createElement("select"); evalSelect.className = "eval-select data-trigger"; evalSelect.setAttribute("data-id", voter.id); evalSelect.setAttribute("data-row", voter.publicRow);
+      SETTINGS.evaluations.forEach(ev => { evalSelect.add(new Option(ev, ev, false, ev === voter.evaluation)); });
+      controlGroup.appendChild(evalSelect);
+
+      row.appendChild(controlGroup); container.appendChild(row);
+      infoWindow.setContent(container); infoWindow.open(map, marker);
+    }
+
+    document.addEventListener("change", e => {
+      if (e.target && e.target.classList.contains("data-trigger")) {
+        const container = e.target.parentElement;
+        const statusVal = container.querySelector(".status-select").value;
+        const evalVal = container.querySelector(".eval-select").value;
+        const id = e.target.getAttribute("data-id");
+        const row = e.target.getAttribute("data-row");
+
+        globalData.forEach(d => { if (d.id === id) { d.status = statusVal; d.evaluation = evalVal; } });
+        markersArray.forEach(m => {
+          if (m.voterData && m.voterData.id === id) {
+            m.voterData.status = statusVal; m.voterData.evaluation = evalVal;
+            m.content.style.backgroundColor = getPinColor(statusVal, evalVal);
+          }
+        });
+        applyFilters();
+
+        const saveIndicator = document.getElementById("save-indicator");
+        saveIndicator.style.display = "block";
+        saveIndicator.style.background = "rgba(15, 23, 42, .88)";
+        saveIndicator.innerText = "保存中...";
+
+        const payload = {
+          action: "update_status",
+          sheetId: currentSheetId,
+          row: row,
+          status: statusVal,
+          evaluation: evalVal
+        };
+
+        fetch(CONFIG_GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        })
+        .then(res => {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        })
+        .then(data => {
+          if (data.success) {
+            saveIndicator.style.background = "rgba(22, 163, 74, .92)";
+            saveIndicator.innerText = "保存完了！";
+            setTimeout(() => { saveIndicator.style.display = "none"; }, 2000);
+          } else { throw new Error(data.error); }
+        })
+        .catch(err => {
+          saveIndicator.style.background = "rgba(220, 38, 38, .92)";
+          saveIndicator.innerText = "保存失敗";
+          setTimeout(() => { saveIndicator.style.display = "none"; }, 5000);
+        });
+      }
+    });
+
+    document.getElementById("location-btn").addEventListener("click", () => {
+      const btn = document.getElementById("location-btn");
+      const label = document.getElementById("location-btn-label");
+      const originalText = label.textContent;
+      label.textContent = "取得中...";
+      btn.classList.add("is-loading");
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            label.textContent = originalText;
+            btn.classList.remove("is-loading");
+            const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            if (!userMarker) {
+              const pinDiv = document.createElement("div");
+              pinDiv.className = "custom-pin";
+              pinDiv.style.backgroundColor = "#fff";
+              pinDiv.style.borderColor = "#2b6cb0";
+              userMarker = new AdvancedMarkerElement({ position: loc, map: map, content: pinDiv, zIndex: 999 });
+            } else {
+              userMarker.position = loc;
+            }
+            map.panTo(loc); map.setZoom(17);
+          },
+          err => { label.textContent = originalText; btn.classList.remove("is-loading"); alert("現在地を取得できませんでした。"); },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      } else { label.textContent = originalText; btn.classList.remove("is-loading"); alert("位置情報非対応です。"); }
+    });
+  </script>
+</body>
+</html>
