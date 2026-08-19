@@ -4,6 +4,7 @@ config.js
 # Cloudflare / Node関連
 node_modules/
 .wrangler/
+dist/
 .env
 .env.*
 
