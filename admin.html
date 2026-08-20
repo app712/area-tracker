@@ -87,6 +87,28 @@
 
     .back-link { display: block; text-align: center; margin-top: 18px; font-size: 12px; color: var(--c-text-muted); text-decoration: none; }
     .back-link:hover { color: var(--c-primary); }
+
+    .tabs { display: flex; gap: 6px; margin-bottom: 22px; background: #f1f5f9; padding: 4px; border-radius: var(--radius-sm); }
+    .tab-btn {
+      flex: 1; padding: 9px 10px; border: none; border-radius: 6px; background: transparent; cursor: pointer;
+      font-size: 13px; font-weight: 700; font-family: inherit; color: var(--c-text-muted); transition: background .15s, color .15s;
+    }
+    .tab-btn.active { background: #fff; color: var(--c-primary-dark); box-shadow: var(--shadow-sm); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    select, input[type="file"] {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--c-border); border-radius: var(--radius-sm);
+      font-size: 14px; font-family: inherit; background: #f8fafc;
+    }
+    select:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 3px var(--c-primary-light); background: #fff; }
+    .hint { font-size: 11px; color: var(--c-text-muted); margin: -6px 0 12px; line-height: 1.6; }
+    .refresh-row { display: flex; gap: 8px; align-items: flex-end; }
+    .refresh-row select { flex: 1; }
+    #csv-preview { font-size: 12px; color: var(--c-text-muted); margin: -6px 0 12px; }
+    #csv-preview table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+    #csv-preview th, #csv-preview td { border: 1px solid var(--c-border); padding: 4px 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+    #csv-preview th { background: #f8fafc; }
   </style>
 </head>
 <body>
@@ -94,49 +116,105 @@
     <div class="card-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     </div>
-    <h1>新規顧客登録</h1>
-    <div class="subtitle">エリアトラッカー 管理画面</div>
+    <h1>エリアトラッカー 管理画面</h1>
+    <div class="subtitle">新規顧客登録 / CSVアップロード</div>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-tab="register">新規顧客登録</button>
+      <button type="button" class="tab-btn" data-tab="csv">CSVアップロード</button>
+    </div>
 
     <div id="message" class="message"></div>
 
-    <form id="register-form">
-      <fieldset>
-        <legend>管理者認証</legend>
-        <label class="field">
-          <span>管理者パスワード</span>
-          <input type="password" id="admin-password" autocomplete="off" required />
-        </label>
-      </fieldset>
+    <div class="tab-panel active" id="tab-register">
+      <form id="register-form">
+        <fieldset>
+          <legend>管理者認証</legend>
+          <label class="field">
+            <span>管理者パスワード</span>
+            <input type="password" id="admin-password" autocomplete="off" required />
+          </label>
+        </fieldset>
 
-      <fieldset>
-        <legend>顧客情報</legend>
-        <label class="field">
-          <span>顧客名（会社名・担当者名）</span>
-          <input type="text" id="client-name" required />
-        </label>
-        <label class="field">
-          <span>メールアドレス（ログイン情報の送付先）</span>
-          <input type="email" id="client-email" required />
-        </label>
-      </fieldset>
+        <fieldset>
+          <legend>顧客情報</legend>
+          <label class="field">
+            <span>顧客名（会社名・担当者名）</span>
+            <input type="text" id="client-name" required />
+          </label>
+          <label class="field">
+            <span>メールアドレス（ログイン情報の送付先）</span>
+            <input type="email" id="client-email" required />
+          </label>
+        </fieldset>
 
-      <fieldset>
-        <legend>現場アプリ ログイン情報</legend>
-        <label class="field">
-          <span>ユーザーID</span>
-          <input type="text" id="client-username" autocomplete="off" required />
-        </label>
-        <label class="field">
-          <span>パスワード</span>
-          <div class="input-row">
-            <input type="text" id="client-password" autocomplete="off" required />
-            <button type="button" class="gen-btn" id="gen-password-btn">自動生成</button>
+        <fieldset>
+          <legend>現場アプリ ログイン情報</legend>
+          <label class="field">
+            <span>ユーザーID</span>
+            <input type="text" id="client-username" autocomplete="off" required />
+          </label>
+          <label class="field">
+            <span>パスワード</span>
+            <div class="input-row">
+              <input type="text" id="client-password" autocomplete="off" required />
+              <button type="button" class="gen-btn" id="gen-password-btn">自動生成</button>
+            </div>
+          </label>
+        </fieldset>
+
+        <button type="submit" id="submit-btn">顧客を登録する</button>
+      </form>
+    </div>
+
+    <div class="tab-panel" id="tab-csv">
+      <form id="csv-form">
+        <fieldset>
+          <legend>管理者認証</legend>
+          <label class="field">
+            <span>管理者パスワード</span>
+            <input type="password" id="csv-admin-password" autocomplete="off" required />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>アップロード先の顧客</legend>
+          <label class="field">
+            <span>顧客を選択</span>
+            <div class="refresh-row">
+              <select id="client-select" required>
+                <option value="">-- パスワード入力後、一覧を読み込んでください --</option>
+              </select>
+              <button type="button" class="gen-btn" id="load-clients-btn">一覧を読み込む</button>
+            </div>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>CSVファイル</legend>
+          <label class="field">
+            <span>ファイル選択</span>
+            <input type="file" id="csv-file" accept=".csv,text/csv" required />
+          </label>
+          <div class="hint">
+            1行目はヘッダー行。列名で自動判定します（順不同）：<br>
+            <b>住所</b>（必須）／ 名称・建物名（任意。空欄の場合は住所から自動分割）／ 氏・氏名（任意）／
+            緯度・lat（任意）／ 経度・lng（任意）。<br>
+            緯度・経度の両方が入力されている行は、その座標をそのまま使用しGoogle側での再検索は行いません。未入力の行のみ住所から自動で座標を取得します。
           </div>
-        </label>
-      </fieldset>
+          <label class="field">
+            <span>文字コード</span>
+            <select id="csv-encoding">
+              <option value="utf-8">UTF-8（推奨）</option>
+              <option value="shift-jis">Shift-JIS（Excelで作成したCSV）</option>
+            </select>
+          </label>
+          <div id="csv-preview"></div>
+        </fieldset>
 
-      <button type="submit" id="submit-btn">顧客を登録する</button>
-    </form>
+        <button type="submit" id="csv-submit-btn">CSVを登録する</button>
+      </form>
+    </div>
 
     <a class="back-link" href="index.html">← 現場用マップアプリに戻る</a>
   </div>
@@ -160,6 +238,225 @@
       el.className = "message " + type;
       el.innerHTML = html;
     }
+
+    function clearMessage() {
+      const el = document.getElementById("message");
+      el.className = "message";
+      el.innerHTML = "";
+    }
+
+    // ---- タブ切り替え ----
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+        clearMessage();
+      });
+    });
+
+    function checkConfig() {
+      if (!window.APP_CONFIG || !window.APP_CONFIG.CONFIG_GAS_URL) {
+        showMessage("error", "設定ファイル(config.js)が見つかりません。config.example.jsをコピーしてconfig.jsを作成してください。");
+        return false;
+      }
+      return true;
+    }
+
+    function callGas(payload) {
+      return fetch(window.APP_CONFIG.CONFIG_GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      }).then((res) => res.json());
+    }
+
+    // ---- CSVアップロード ----
+    const HEADER_ALIASES = {
+      address: ["住所", "address"],
+      name: ["名称", "建物名", "建物", "name"],
+      lastName: ["氏", "氏名", "name2", "lastname"],
+      lat: ["緯度", "lat", "latitude"],
+      lng: ["経度", "lng", "lon", "longitude"]
+    };
+
+    function findColumnIndex(headers, aliases) {
+      for (let i = 0; i < headers.length; i++) {
+        const h = headers[i].trim().toLowerCase();
+        if (aliases.some((a) => a.toLowerCase() === h)) return i;
+      }
+      return -1;
+    }
+
+    // RFC4180準拠の簡易CSVパーサー（ダブルクォート内のカンマ・改行に対応）
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (text[i + 1] === '"') { field += '"'; i++; }
+            else { inQuotes = false; }
+          } else {
+            field += c;
+          }
+        } else {
+          if (c === '"') inQuotes = true;
+          else if (c === ",") { row.push(field); field = ""; }
+          else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+          else if (c === "\r") { /* skip, \n が改行として来る */ }
+          else field += c;
+        }
+      }
+      if (field !== "" || row.length > 0) { row.push(field); rows.push(row); }
+      return rows.filter((r) => r.some((cell) => String(cell).trim() !== ""));
+    }
+
+    let parsedCsvRows = null; // [[address, name, lastName, lat, lng], ...]
+
+    function renderCsvPreview(rows, totalCount) {
+      const el = document.getElementById("csv-preview");
+      if (!rows.length) { el.innerHTML = ""; return; }
+      let html = totalCount + "件のデータを検出しました（先頭5件をプレビュー表示）<table><tr><th>住所</th><th>名称</th><th>氏</th><th>緯度</th><th>経度</th></tr>";
+      rows.slice(0, 5).forEach((r) => {
+        html += "<tr><td>" + r.map((v) => (v || "").toString()).map(escapeHtml).join("</td><td>") + "</td></tr>";
+      });
+      html += "</table>";
+      el.innerHTML = html;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    }
+
+    function loadCsvFile(file, encoding) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        let text;
+        try {
+          text = new TextDecoder(encoding).decode(new Uint8Array(reader.result));
+        } catch (err) {
+          showMessage("error", "文字コードの変換に失敗しました: " + err.message);
+          return;
+        }
+        const allRows = parseCsv(text);
+        if (allRows.length < 2) {
+          showMessage("error", "CSVにデータ行が見つかりません（ヘッダー行＋1行以上が必要です）。");
+          parsedCsvRows = null;
+          renderCsvPreview([], 0);
+          return;
+        }
+        const headers = allRows[0];
+        const addrIdx = findColumnIndex(headers, HEADER_ALIASES.address);
+        if (addrIdx === -1) {
+          showMessage("error", "ヘッダー行に「住所」列が見つかりません。列名をご確認ください。");
+          parsedCsvRows = null;
+          renderCsvPreview([], 0);
+          return;
+        }
+        const nameIdx = findColumnIndex(headers, HEADER_ALIASES.name);
+        const lastNameIdx = findColumnIndex(headers, HEADER_ALIASES.lastName);
+        const latIdx = findColumnIndex(headers, HEADER_ALIASES.lat);
+        const lngIdx = findColumnIndex(headers, HEADER_ALIASES.lng);
+
+        const dataRows = allRows.slice(1).map((r) => [
+          (r[addrIdx] || "").trim(),
+          nameIdx > -1 ? (r[nameIdx] || "").trim() : "",
+          lastNameIdx > -1 ? (r[lastNameIdx] || "").trim() : "",
+          latIdx > -1 ? (r[latIdx] || "").trim() : "",
+          lngIdx > -1 ? (r[lngIdx] || "").trim() : ""
+        ]).filter((r) => r[0]);
+
+        parsedCsvRows = dataRows;
+        clearMessage();
+        renderCsvPreview(dataRows, dataRows.length);
+      };
+      reader.onerror = () => showMessage("error", "ファイルの読み込みに失敗しました。");
+      reader.readAsArrayBuffer(file);
+    }
+
+    document.getElementById("csv-file").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      parsedCsvRows = null;
+      if (file) loadCsvFile(file, document.getElementById("csv-encoding").value);
+    });
+    document.getElementById("csv-encoding").addEventListener("change", () => {
+      const file = document.getElementById("csv-file").files[0];
+      if (file) loadCsvFile(file, document.getElementById("csv-encoding").value);
+    });
+
+    document.getElementById("load-clients-btn").addEventListener("click", () => {
+      if (!checkConfig()) return;
+      const adminPassword = document.getElementById("csv-admin-password").value;
+      if (!adminPassword) { showMessage("error", "管理者パスワードを入力してください。"); return; }
+
+      const select = document.getElementById("client-select");
+      const btn = document.getElementById("load-clients-btn");
+      btn.disabled = true; btn.innerText = "読込中...";
+      clearMessage();
+
+      callGas({ action: "get_clients", adminPassword: adminPassword })
+        .then((data) => {
+          if (!data.success) { showMessage("error", data.error || "顧客一覧の取得に失敗しました。"); return; }
+          if (!data.clients.length) {
+            select.innerHTML = '<option value="">登録済みの顧客がいません</option>';
+            return;
+          }
+          select.innerHTML = data.clients.map((c) =>
+            '<option value="' + c.code + '">' + escapeHtml(c.name) + "（" + c.code + "）</option>"
+          ).join("");
+        })
+        .catch((err) => showMessage("error", "通信エラー: " + err.message))
+        .finally(() => { btn.disabled = false; btn.innerText = "一覧を読み込む"; });
+    });
+
+    document.getElementById("csv-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!checkConfig()) return;
+
+      const adminPassword = document.getElementById("csv-admin-password").value;
+      const clientCode = document.getElementById("client-select").value;
+      if (!clientCode) { showMessage("error", "アップロード先の顧客を選択してください。"); return; }
+      if (!parsedCsvRows || !parsedCsvRows.length) { showMessage("error", "有効なCSVファイルを選択してください。"); return; }
+
+      const btn = document.getElementById("csv-submit-btn");
+      btn.disabled = true;
+      btn.innerText = "登録中（住所が多い場合は数分かかります）...";
+      clearMessage();
+
+      callGas({
+        action: "upload_csv",
+        adminPassword: adminPassword,
+        clientCode: clientCode,
+        csvData: JSON.stringify(parsedCsvRows)
+      })
+        .then((data) => {
+          if (data.success) {
+            const r = data.result || {};
+            showMessage("success",
+              "CSVの登録が完了しました。<dl>" +
+              "<dt>新規追加</dt><dd>" + (r.addedNormal || 0) + " 件</dd>" +
+              "<dt>重複（世帯人数カウントアップ）</dt><dd>" + (r.skipped || 0) + " 件</dd>" +
+              "<dt>住所不備（要確認）</dt><dd>" + (r.addedError || 0) + " 件</dd>" +
+              "</dl>"
+            );
+            document.getElementById("csv-file").value = "";
+            document.getElementById("csv-preview").innerHTML = "";
+            parsedCsvRows = null;
+          } else {
+            showMessage("error", data.error || "登録に失敗しました。");
+          }
+        })
+        .catch((err) => showMessage("error", "通信エラー: " + err.message))
+        .finally(() => {
+          btn.disabled = false;
+          btn.innerText = "CSVを登録する";
+        });
+    });
 
     document.getElementById("register-form").addEventListener("submit", (e) => {
       e.preventDefault();

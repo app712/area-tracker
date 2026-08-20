@@ -5,7 +5,7 @@
 ## 構成
 
 - [`index.html`](index.html) — 現場用マップアプリ（フロントエンド）。Cloudflare Pages等の静的ホスティングにデプロイする。
-- [`admin.html`](admin.html) — 運営者用の新規顧客登録画面。管理者パスワードで保護されている。
+- [`admin.html`](admin.html) — 運営者用の管理画面（新規顧客登録／CSVアップロード）。管理者パスワードで保護されている。CSVは「住所」列のみ必須で、名称・氏・緯度・経度は任意。緯度経度が入力済みの行はジオコーディングAPIを呼ばずそのまま反映される。
 - [`gas/Code.gs`](gas/Code.gs) — バックエンドAPI（Google Apps Script）。顧客登録・CSV取り込み・認証・ステータス更新を担当。Google Apps Scriptとしてデプロイする（Cloudflareでは動作しない）。
 - `config.example.js` — フロントエンド設定のテンプレート。
 - `config.js` — 実際のAPIキー・GAS URLを入れる設定ファイル（**Git管理外**。`.gitignore`で除外済み）。

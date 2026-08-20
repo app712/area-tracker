@@ -39,7 +39,18 @@ function doPost(e) {
     var params = JSON.parse(e.postData.contents);
     var action = params.action;
 
-    if (action === "get_clients") { return createJsonResponse({ success: true, clients: [] }); }
+    if (action === "get_clients") {
+      if (!ADMIN_PASSWORD) throw new Error("管理者パスワードが未設定です。スクリプト プロパティにADMIN_PASSWORDを登録してください。");
+      if (params.adminPassword !== ADMIN_PASSWORD) throw new Error("管理者パスワードが正しくありません。");
+
+      var clientData = SpreadsheetApp.openById(MASTER_SHEET_ID).getSheetByName("顧客マスタ").getDataRange().getValues();
+      var clients = [];
+      for (var c = 1; c < clientData.length; c++) {
+        if (!clientData[c][0]) continue;
+        clients.push({ code: String(clientData[c][0]), name: String(clientData[c][2] || ""), email: String(clientData[c][3] || "") });
+      }
+      return createJsonResponse({ success: true, clients: clients });
+    }
 
     if (action === "register_client") {
       if (!ADMIN_PASSWORD) throw new Error("管理者パスワードが未設定です。スクリプト プロパティにADMIN_PASSWORDを登録してください。");
@@ -79,6 +90,9 @@ function doPost(e) {
     }
 
     if (action === "upload_csv") {
+      if (!ADMIN_PASSWORD) throw new Error("管理者パスワードが未設定です。スクリプト プロパティにADMIN_PASSWORDを登録してください。");
+      if (params.adminPassword !== ADMIN_PASSWORD) throw new Error("管理者パスワードが正しくありません。");
+
       var clientCode = params.clientCode; var csvDataString = params.csvData;
       if (!clientCode || !csvDataString) throw new Error("パラメータが不足しています");
       var targetSheetId = getClientSheetId(clientCode);
@@ -147,8 +161,18 @@ function optimizeAndProcessCsv(sheetId, csvData) {
   for (var i = 0; i < csvData.length; i++) {
     var rawAddress = csvData[i][0] ? String(csvData[i][0]).trim() : "";
     var rawName = csvData[i][1] ? String(csvData[i][1]).trim() : "";
-    var extractedLastName = csvData[i][2] ? String(csvData[i][2]).trim() : ""; 
+    var extractedLastName = csvData[i][2] ? String(csvData[i][2]).trim() : "";
     if (!rawAddress) continue;
+
+    // CSVに緯度・経度が含まれている場合はそれを優先し、ジオコーディングAPIを呼ばない
+    var providedLat = NaN, providedLng = NaN;
+    if (csvData[i][3] !== undefined && csvData[i][3] !== null && String(csvData[i][3]).trim() !== "") {
+      providedLat = parseFloat(csvData[i][3]);
+    }
+    if (csvData[i][4] !== undefined && csvData[i][4] !== null && String(csvData[i][4]).trim() !== "") {
+      providedLng = parseFloat(csvData[i][4]);
+    }
+    var hasProvidedCoords = !isNaN(providedLat) && !isNaN(providedLng) && (providedLat !== 0 || providedLng !== 0);
 
     var optimizedAddress = rawAddress;
     var optimizedName = rawName;
@@ -194,25 +218,30 @@ function optimizeAndProcessCsv(sheetId, csvData) {
     var currentId = "ID_" + totalCount;
     var lat = ""; var lng = ""; var isError = false; var errorReason = "";
 
-    try {
-      var geoUrl = "https://maps.googleapis.com/maps/api/geocode/json?address=" + encodeURIComponent(optimizedAddress) + "&key=" + GOOGLE_API_KEY;
-      var response = UrlFetchApp.fetch(geoUrl, { muteHttpExceptions: true });
-      var json = JSON.parse(response.getContentText());
-      
-      if (json.status === "OK") {
-        var result = json.results[0];
-        var locationType = result.geometry.location_type;
-        if (locationType === "ROOFTOP" || locationType === "RANGE_INTERPOLATED") {
-          lat = result.geometry.location.lat; lng = result.geometry.location.lng;
+    if (hasProvidedCoords) {
+      // CSV側で座標が指定されている場合はそれをそのまま反映する
+      lat = providedLat; lng = providedLng;
+    } else {
+      try {
+        var geoUrl = "https://maps.googleapis.com/maps/api/geocode/json?address=" + encodeURIComponent(optimizedAddress) + "&key=" + GOOGLE_API_KEY;
+        var response = UrlFetchApp.fetch(geoUrl, { muteHttpExceptions: true });
+        var json = JSON.parse(response.getContentText());
+
+        if (json.status === "OK") {
+          var result = json.results[0];
+          var locationType = result.geometry.location_type;
+          if (locationType === "ROOFTOP" || locationType === "RANGE_INTERPOLATED") {
+            lat = result.geometry.location.lat; lng = result.geometry.location.lng;
+          } else {
+            isError = true; errorReason = "住所の精度不足 (Google判定: " + locationType + ")";
+          }
+        } else if (json.status === "OVER_QUERY_LIMIT") {
+          isError = true; errorReason = "APIリクエスト数制限超過";
         } else {
-          isError = true; errorReason = "住所の精度不足 (Google判定: " + locationType + ")";
+          isError = true; errorReason = "存在しない住所または解析不能 (" + json.status + ")";
         }
-      } else if (json.status === "OVER_QUERY_LIMIT") {
-        isError = true; errorReason = "APIリクエスト数制限超過";
-      } else {
-        isError = true; errorReason = "存在しない住所または解析不能 (" + json.status + ")";
-      }
-    } catch(e) { isError = true; errorReason = "システム通信例外エラー"; }
+      } catch(e) { isError = true; errorReason = "システム通信例外エラー"; }
+    }
 
     if (!isError) {
       // H列（[7]）に初期値の 1 をセット
@@ -227,7 +256,7 @@ function optimizeAndProcessCsv(sheetId, csvData) {
       errorDataToWrite.push([currentId, rawAddress, rawName, extractedLastName, errorReason]);
       errorSet.add(keyOptimized);
     }
-    Utilities.sleep(100);
+    if (!hasProvidedCoords) Utilities.sleep(100);
   }
 
   // シートへの書き込み
@@ -247,7 +276,7 @@ function optimizeAndProcessCsv(sheetId, csvData) {
     }
   }
 
-  return { addedNormal: normalDataToWrite.length, skipped: skippedCount };
+  return { addedNormal: normalDataToWrite.length, skipped: skippedCount, addedError: errorDataToWrite.length };
 }
 
 // =====================================================================
