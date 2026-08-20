@@ -14,14 +14,25 @@
 
 ### 1. バックエンド（Google Apps Script）
 
-1. [script.google.com](https://script.google.com) で新規プロジェクトを作成し、[`gas/Code.gs`](gas/Code.gs) の内容を貼り付ける。
-2. エディタ左側「プロジェクトの設定」(⚙) →「スクリプト プロパティ」で以下を登録する。
+[`gas/`](gas/) は `clasp` でGoogle Apps Scriptプロジェクトと同期している（`gas/.clasp.json` にスクリプトIDを保持）。
+
+```bash
+npm install -g @google/clasp
+clasp login          # Googleアカウントでブラウザ認証
+cd gas
+clasp push           # ローカルの変更をApps Scriptプロジェクトへ反映
+clasp deploy          # 新しいデプロイを作成（URLが変わるので config.js の更新が必要）
+```
+
+初回セットアップ時、またはスクリプトプロパティの値を変更したい場合は、エディタ（`clasp open` で開ける）の「プロジェクトの設定」(⚙) →「スクリプト プロパティ」で以下を登録する。
+
    - `MASTER_SHEET_ID` — 顧客マスタを管理するスプレッドシートのID
    - `GOOGLE_API_KEY` — ジオコーディング用のGoogle Maps APIキー
    - `PARENT_FOLDER_ID` — 顧客シートの保存先GoogleドライブフォルダID
    - `FIELD_APP_URL` — 現場用マップアプリ（index.html）の公開URL
    - `ADMIN_PASSWORD` — 新規顧客登録画面（admin.html）用の管理者パスワード
-3. 「デプロイ」→「新しいデプロイ」→ ウェブアプリとして公開し、実行URL（`.../exec`）を控える。
+
+（コードから一括設定したい場合は、`PropertiesService.getScriptProperties().setProperties({...})` を呼ぶ一時関数をエディタに貼り付けて一度だけ実行し、実行後に削除するとGitに秘密情報を残さず設定できる。）
 
 ### 2. フロントエンド（index.html）
 
