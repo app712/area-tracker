@@ -177,7 +177,10 @@ function optimizeAndProcessCsv(sheetId, csvData) {
     if (csvData[i][4] !== undefined && csvData[i][4] !== null && String(csvData[i][4]).trim() !== "") {
       providedLng = parseFloat(csvData[i][4]);
     }
-    var hasProvidedCoords = !isNaN(providedLat) && !isNaN(providedLng) && (providedLat !== 0 || providedLng !== 0);
+    // 緯度は±90、経度は±180を超えられない。範囲外＝列の取り違え等の不正データとみなし、
+    // 無効な値をそのまま保存せず通常のジオコーディングにフォールバックする。
+    var hasProvidedCoords = !isNaN(providedLat) && !isNaN(providedLng) && (providedLat !== 0 || providedLng !== 0) &&
+      Math.abs(providedLat) <= 90 && Math.abs(providedLng) <= 180;
 
     var optimizedAddress = rawAddress;
     var optimizedName = rawName;

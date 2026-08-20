@@ -109,6 +109,15 @@
     #csv-preview table { border-collapse: collapse; width: 100%; margin-top: 6px; }
     #csv-preview th, #csv-preview td { border: 1px solid var(--c-border); padding: 4px 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
     #csv-preview th { background: #f8fafc; }
+    #csv-preview .coord-summary { margin-top: 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: #f8fafc; border: 1px solid var(--c-border); line-height: 1.6; }
+    #csv-preview .coord-summary b { color: var(--c-text); }
+
+    .progress-wrap { display: none; margin: -6px 0 18px; }
+    .progress-wrap.active { display: block; }
+    .progress-wrap progress { width: 100%; height: 10px; border-radius: 6px; overflow: hidden; accent-color: var(--c-primary); }
+    .progress-wrap progress::-webkit-progress-bar { background: var(--c-border); border-radius: 6px; }
+    .progress-wrap progress::-webkit-progress-value { background: linear-gradient(135deg, var(--c-primary), var(--c-primary-dark)); border-radius: 6px; }
+    .progress-text { margin-top: 6px; font-size: 12px; color: var(--c-text-muted); font-weight: 600; text-align: center; }
   </style>
 </head>
 <body>
@@ -211,6 +220,11 @@
           </label>
           <div id="csv-preview"></div>
         </fieldset>
+
+        <div id="csv-progress-wrap" class="progress-wrap">
+          <progress id="csv-progress-bar" max="100" value="0"></progress>
+          <div id="csv-progress-text" class="progress-text"></div>
+        </div>
 
         <button type="submit" id="csv-submit-btn">CSVを登録する</button>
       </form>
@@ -318,10 +332,47 @@
 
     let parsedCsvRows = null; // [[address, name, lastName, lat, lng], ...]
 
+    // GAS側のhasProvidedCoords判定と揃える：緯度・経度の両方が空でない数値で、
+    // どちらかが0以外、かつ緯度±90/経度±180の範囲内であれば「座標指定あり＝ジオコーディング省略」とみなす。
+    function rowHasProvidedCoords(row) {
+      const lat = parseFloat(row[3]);
+      const lng = parseFloat(row[4]);
+      return String(row[3] || "").trim() !== "" && String(row[4] || "").trim() !== "" &&
+        !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0) &&
+        Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    }
+
+    // 緯度列の値が±90を超えているのに経度列の値なら妥当な範囲…という行が多い場合、
+    // 緯度・経度の列が入れ替わっている典型的なミスの可能性が高いとみなす。
+    function countLikelySwappedCoords(rows) {
+      return rows.filter((r) => {
+        const lat = parseFloat(r[3]), lng = parseFloat(r[4]);
+        return !isNaN(lat) && !isNaN(lng) && Math.abs(lat) > 90 && Math.abs(lng) <= 90;
+      }).length;
+    }
+
     function renderCsvPreview(rows, totalCount) {
       const el = document.getElementById("csv-preview");
       if (!rows.length) { el.innerHTML = ""; return; }
-      let html = totalCount + "件のデータを検出しました（先頭5件をプレビュー表示）<table><tr><th>住所</th><th>名称</th><th>氏</th><th>緯度</th><th>経度</th></tr>";
+      const coordCount = rows.filter(rowHasProvidedCoords).length;
+      const geocodeCount = totalCount - coordCount;
+      const swapCount = countLikelySwappedCoords(rows);
+      let html = totalCount + "件のデータを検出しました（先頭5件をプレビュー表示）";
+      html += '<div class="coord-summary">';
+      html += "座標指定あり（API呼び出し省略・即時反映）: <b>" + coordCount + "件</b><br>";
+      html += "座標なし（住所から自動取得・1件ごとに時間がかかります）: <b>" + geocodeCount + "件</b>";
+      if (geocodeCount > 0) {
+        html += "<br>目安時間: 約" + Math.ceil(geocodeCount * 0.3 / 60) + "分〜（Google API応答時間に依存）";
+      }
+      html += "</div>";
+      if (swapCount > 0) {
+        html += '<div class="coord-summary" style="background:#fef3c7;border-color:#fcd34d;color:#92400e;">';
+        html += "⚠ " + swapCount + "件、緯度の値が±90を超えています。CSVの「緯度」「経度」列が入れ替わっている可能性があります。";
+        html += "該当行は無効な座標として扱われ、住所からの自動取得（時間がかかります）にフォールバックします。<br>";
+        html += "列の中身をご確認のうえ、必要であればCSVの緯度・経度の列を入れ替えて再アップロードしてください。";
+        html += "</div>";
+      }
+      html += "<table><tr><th>住所</th><th>名称</th><th>氏</th><th>緯度</th><th>経度</th></tr>";
       rows.slice(0, 5).forEach((r) => {
         html += "<tr><td>" + r.map((v) => (v || "").toString()).map(escapeHtml).join("</td><td>") + "</td></tr>";
       });
@@ -373,6 +424,7 @@
 
         parsedCsvRows = dataRows;
         clearMessage();
+        resetProgress();
         renderCsvPreview(dataRows, dataRows.length);
       };
       reader.onerror = () => showMessage("error", "ファイルの読み込みに失敗しました。");
@@ -414,7 +466,50 @@
         .finally(() => { btn.disabled = false; btn.innerText = "一覧を読み込む"; });
     });
 
-    document.getElementById("csv-form").addEventListener("submit", (e) => {
+    const CSV_BATCH_SIZE = 100; // 1リクエストあたりの最大行数（ジオコーディングがあっても6分制限に収まる目安）
+
+    function setProgress(processed, total, label) {
+      const wrap = document.getElementById("csv-progress-wrap");
+      const bar = document.getElementById("csv-progress-bar");
+      const text = document.getElementById("csv-progress-text");
+      wrap.classList.add("active");
+      bar.max = total;
+      bar.value = processed;
+      text.textContent = label + "：" + processed + " / " + total + "件（" + Math.floor((processed / total) * 100) + "%）";
+    }
+
+    function resetProgress() {
+      document.getElementById("csv-progress-wrap").classList.remove("active");
+      document.getElementById("csv-progress-bar").value = 0;
+    }
+
+    // CSVを一度に送らず分割送信する。1件ずつ進捗を更新できるほか、
+    // 大量データがGASの実行時間上限（6分）に収まるよう安全策としても機能する。
+    async function uploadCsvInBatches(rows, adminPassword, clientCode) {
+      const total = rows.length;
+      const totals = { addedNormal: 0, skipped: 0, addedError: 0 };
+      setProgress(0, total, "アップロード中");
+      for (let start = 0; start < total; start += CSV_BATCH_SIZE) {
+        const batch = rows.slice(start, start + CSV_BATCH_SIZE);
+        const data = await callGas({
+          action: "upload_csv",
+          adminPassword: adminPassword,
+          clientCode: clientCode,
+          csvData: JSON.stringify(batch)
+        });
+        if (!data.success) {
+          throw new Error((data.error || "登録に失敗しました") + "（" + (start + 1) + "〜" + Math.min(start + batch.length, total) + "件目で停止・それより前は登録済み）");
+        }
+        const r = data.result || {};
+        totals.addedNormal += r.addedNormal || 0;
+        totals.skipped += r.skipped || 0;
+        totals.addedError += r.addedError || 0;
+        setProgress(Math.min(start + batch.length, total), total, "アップロード中");
+      }
+      return totals;
+    }
+
+    document.getElementById("csv-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!checkConfig()) return;
 
@@ -425,37 +520,28 @@
 
       const btn = document.getElementById("csv-submit-btn");
       btn.disabled = true;
-      btn.innerText = "登録中（住所が多い場合は数分かかります）...";
+      btn.innerText = "登録中...";
       clearMessage();
 
-      callGas({
-        action: "upload_csv",
-        adminPassword: adminPassword,
-        clientCode: clientCode,
-        csvData: JSON.stringify(parsedCsvRows)
-      })
-        .then((data) => {
-          if (data.success) {
-            const r = data.result || {};
-            showMessage("success",
-              "CSVの登録が完了しました。<dl>" +
-              "<dt>新規追加</dt><dd>" + (r.addedNormal || 0) + " 件</dd>" +
-              "<dt>重複（世帯人数カウントアップ）</dt><dd>" + (r.skipped || 0) + " 件</dd>" +
-              "<dt>住所不備（要確認）</dt><dd>" + (r.addedError || 0) + " 件</dd>" +
-              "</dl>"
-            );
-            document.getElementById("csv-file").value = "";
-            document.getElementById("csv-preview").innerHTML = "";
-            parsedCsvRows = null;
-          } else {
-            showMessage("error", data.error || "登録に失敗しました。");
-          }
-        })
-        .catch((err) => showMessage("error", "通信エラー: " + err.message))
-        .finally(() => {
-          btn.disabled = false;
-          btn.innerText = "CSVを登録する";
-        });
+      try {
+        const totals = await uploadCsvInBatches(parsedCsvRows, adminPassword, clientCode);
+        showMessage("success",
+          "CSVの登録が完了しました。<dl>" +
+          "<dt>新規追加</dt><dd>" + totals.addedNormal + " 件</dd>" +
+          "<dt>重複（世帯人数カウントアップ）</dt><dd>" + totals.skipped + " 件</dd>" +
+          "<dt>住所不備（要確認）</dt><dd>" + totals.addedError + " 件</dd>" +
+          "</dl>"
+        );
+        document.getElementById("csv-file").value = "";
+        document.getElementById("csv-preview").innerHTML = "";
+        parsedCsvRows = null;
+        resetProgress();
+      } catch (err) {
+        showMessage("error", "通信エラー: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "CSVを登録する";
+      }
     });
 
     document.getElementById("register-form").addEventListener("submit", (e) => {
