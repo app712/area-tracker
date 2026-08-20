@@ -287,13 +287,22 @@
       if (confirm("ログアウトしますか？")) location.reload();
     });
 
+    // globalData[0]をそのまま中心にすると、列ずれ等で壊れた座標（緯度が90を超える等）の行が
+    // 先頭にあった場合にマップ全体が無関係な場所を表示してしまう（マーカーは0件に見える）。
+    // 有効な範囲の座標を持つ最初の行を探し、無ければ沖縄県庁付近をデフォルトにする。
+    function getInitialMapCenter() {
+      const valid = globalData.find(v => v.lat && v.lng && Math.abs(v.lat) <= 90 && Math.abs(v.lng) <= 180);
+      if (valid) return { lat: valid.lat, lng: valid.lng };
+      return { lat: 26.2124, lng: 127.6809 };
+    }
+
     async function initializeMap() {
       const { Map } = await google.maps.importLibrary("maps");
       const { AdvancedMarkerElement: Marker } = await google.maps.importLibrary("marker");
       AdvancedMarkerElement = Marker;
 
       map = new Map(document.getElementById("map"), {
-        center: { lat: globalData[0].lat, lng: globalData[0].lng },
+        center: getInitialMapCenter(),
         zoom: 13,
         mapId: "DEMO_MAP_ID",
         disableDefaultUI: true,
