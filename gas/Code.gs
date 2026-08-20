@@ -132,7 +132,12 @@ function optimizeAndProcessCsv(sheetId, csvData) {
   var ss = SpreadsheetApp.openById(sheetId);
   var normalSheet = ss.getSheetByName("リスト");
   var errorSheet = ss.getSheetByName("住所不備リスト");
-  
+  if (!normalSheet || !errorSheet) {
+    // register_client経由で作成されたシートには必ず「リスト」「住所不備リスト」が存在する。
+    // 存在しない場合は顧客マスタの登録手順を経ていない不正なシートとみなし、原因不明のnullエラーの代わりに分かりやすいメッセージを返す。
+    throw new Error("この顧客のスプレッドシートに「リスト」または「住所不備リスト」シートが見つかりません。新規顧客登録画面から正しく作成された顧客か確認してください。（シートURL: " + ss.getUrl() + "）");
+  }
+
   // 1. 既存データの取得（重複カウント用）
   var existingMap = {}; 
   if (normalSheet.getLastRow() > 1) {
