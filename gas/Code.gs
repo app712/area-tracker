@@ -268,7 +268,9 @@ function optimizeAndProcessCsv(sheetId, csvData, defaultStatus) {
         if (json.status === "OK") {
           var result = json.results[0];
           var locationType = result.geometry.location_type;
-          if (locationType === "ROOFTOP" || locationType === "RANGE_INTERPOLATED") {
+          // 字・地番ベースの未整備住所（住居表示未実施エリア）ではAPPROXIMATEまでしか
+          // 精度が出ないことが多いため許容する。GEOMETRIC_CENTER以下（都市・国レベル等）は不可とする。
+          if (locationType === "ROOFTOP" || locationType === "RANGE_INTERPOLATED" || locationType === "APPROXIMATE") {
             lat = result.geometry.location.lat; lng = result.geometry.location.lng;
           } else {
             isError = true; errorReason = "住所の精度不足 (Google判定: " + locationType + ")";
