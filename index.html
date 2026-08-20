@@ -218,8 +218,22 @@
     });
 
     const SETTINGS = { statuses: ["未訪問", "訪問済み"], evaluations: ["A", "B", "C", "なし"] };
+    const DEFAULT_STATUSES = ["未訪問", "訪問済み"];
+    const STATUS_DOT_PALETTE = ["#2b6cb0", "#38a169", "#e53e3e", "#718096", "#d69e2e", "#805ad5"];
+    const STATUS_BG_PALETTE = ["#dbeafe", "#dcfce7", "#fee2e2", "#f1f5f9", "#fef3c7", "#ede9fe"];
+
+    // 顧客ごとのカスタムステータス（例:未配布/配布済み/チラシ禁止）が設定されている場合はtrue。
+    // 既定（未訪問/訪問済み）のままの顧客は、従来通り見込み度A/B/Cでピン色を分ける挙動を維持する。
+    function isCustomStatusMode() {
+      return SETTINGS.statuses.length !== DEFAULT_STATUSES.length ||
+        SETTINGS.statuses.some((s, i) => s !== DEFAULT_STATUSES[i]);
+    }
 
     function getPinColor(status, evalVal) {
+      if (isCustomStatusMode()) {
+        const idx = SETTINGS.statuses.indexOf(status);
+        return STATUS_DOT_PALETTE[idx >= 0 ? idx % STATUS_DOT_PALETTE.length : 0];
+      }
       if (status === SETTINGS.statuses[0]) return "#2b6cb0";
       if (evalVal === "A") return "#e53e3e";
       if (evalVal === "B") return "#38a169";
@@ -252,6 +266,10 @@
         if (data.success) {
           currentSheetId = data.spreadsheetId;
           globalData = data.data;
+          // 顧客ごとにステータス選択肢が設定されていればそれを使う（未設定なら既定の未訪問/訪問済みのまま）
+          if (data.statusOptions && data.statusOptions.length > 0) {
+            SETTINGS.statuses = data.statusOptions;
+          }
 
           if (globalData.length === 0) {
              alert("データが登録されていません。管理画面からCSVをアップロードしてください。");
@@ -320,15 +338,25 @@
     function buildFilterUI() {
       const container = document.getElementById("filter-container");
       container.innerHTML = "<div class='filter-hint'>表示切替</div>";
-      const colorMap = {
-        [SETTINGS.statuses[0]]: { dot: "#2b6cb0", bg: "#dbeafe" },
-        "A": { dot: "#e53e3e", bg: "#fee2e2" },
-        "B": { dot: "#38a169", bg: "#dcfce7" },
-        "C": { dot: "#718096", bg: "#f1f5f9" },
-        "なし": { dot: "#d69e2e", bg: "#fef3c7" }
-      };
-      const options = [{ val: SETTINGS.statuses[0], label: SETTINGS.statuses[0] }];
-      SETTINGS.evaluations.forEach(ev => options.push({ val: ev, label: `見込み:${ev}` }));
+
+      let colorMap, options;
+      if (isCustomStatusMode()) {
+        colorMap = {};
+        SETTINGS.statuses.forEach((s, i) => {
+          colorMap[s] = { dot: STATUS_DOT_PALETTE[i % STATUS_DOT_PALETTE.length], bg: STATUS_BG_PALETTE[i % STATUS_BG_PALETTE.length] };
+        });
+        options = SETTINGS.statuses.map(s => ({ val: s, label: s }));
+      } else {
+        colorMap = {
+          [SETTINGS.statuses[0]]: { dot: "#2b6cb0", bg: "#dbeafe" },
+          "A": { dot: "#e53e3e", bg: "#fee2e2" },
+          "B": { dot: "#38a169", bg: "#dcfce7" },
+          "C": { dot: "#718096", bg: "#f1f5f9" },
+          "なし": { dot: "#d69e2e", bg: "#fef3c7" }
+        };
+        options = [{ val: SETTINGS.statuses[0], label: SETTINGS.statuses[0] }];
+        SETTINGS.evaluations.forEach(ev => options.push({ val: ev, label: `見込み:${ev}` }));
+      }
       options.forEach(opt => {
         const lbl = document.createElement("label"); lbl.className = "filter-label is-checked";
         const colors = colorMap[opt.val] || { dot: "#94a3b8", bg: "#f1f5f9" };
@@ -402,12 +430,17 @@
 
     function applyFilters() {
       const checked = Array.from(document.querySelectorAll(".filter-cb:checked")).map(cb => cb.value);
-      const defStatus = SETTINGS.statuses[0];
 
-      const visibleMarkers = markersArray.filter(m => {
-        const d = m.voterData;
-        return (d.status === defStatus && checked.includes(defStatus)) || (d.status !== defStatus && checked.includes(d.evaluation));
-      });
+      let visibleMarkers;
+      if (isCustomStatusMode()) {
+        visibleMarkers = markersArray.filter(m => checked.includes(m.voterData.status));
+      } else {
+        const defStatus = SETTINGS.statuses[0];
+        visibleMarkers = markersArray.filter(m => {
+          const d = m.voterData;
+          return (d.status === defStatus && checked.includes(defStatus)) || (d.status !== defStatus && checked.includes(d.evaluation));
+        });
+      }
 
       if (markerCluster) {
         markerCluster.clearMarkers();

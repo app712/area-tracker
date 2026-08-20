@@ -78,6 +78,9 @@ function doPost(e) {
       }
       var newCode = "CUST_" + ("0000" + (currentMax + 1)).slice(-4);
       var newSs = createAndProtectSpreadsheet(newCode, name, email);
+      // ユーザーID・パスワードが"0000"等の数字のみの場合、書式を指定しないとGoogleが数値扱いし
+      // 先頭のゼロが消えてしまう（例:"0000"→0）。書き込み前に文字列書式を強制する。
+      sheet.getRange(lastRow + 1, 5, 1, 2).setNumberFormat("@");
       sheet.getRange(lastRow + 1, 1, 1, 6).setValues([[newCode, newSs.getId(), name, email, username, password]]);
       
       try {
@@ -96,8 +99,31 @@ function doPost(e) {
       var clientCode = params.clientCode; var csvDataString = params.csvData;
       if (!clientCode || !csvDataString) throw new Error("パラメータが不足しています");
       var targetSheetId = getClientSheetId(clientCode);
-      var result = optimizeAndProcessCsv(targetSheetId, JSON.parse(csvDataString));
+      var uploadStatusOptions = getClientStatusOptions(clientCode);
+      var defaultStatus = (uploadStatusOptions && uploadStatusOptions[0]) || "未訪問";
+      var result = optimizeAndProcessCsv(targetSheetId, JSON.parse(csvDataString), defaultStatus);
       return createJsonResponse({ success: true, message: "保存成功", result: result });
+    }
+
+    if (action === "set_client_status_options") {
+      if (!ADMIN_PASSWORD) throw new Error("管理者パスワードが未設定です。スクリプト プロパティにADMIN_PASSWORDを登録してください。");
+      if (params.adminPassword !== ADMIN_PASSWORD) throw new Error("管理者パスワードが正しくありません。");
+
+      var scoClientCode = params.clientCode;
+      var scoStatusOptions = params.statusOptions; // 配列。空配列/未指定なら既定（未訪問/訪問済み）に戻す
+      if (!scoClientCode) throw new Error("clientCodeが指定されていません");
+
+      var scoSheet = SpreadsheetApp.openById(MASTER_SHEET_ID).getSheetByName("顧客マスタ");
+      var scoData = scoSheet.getDataRange().getValues();
+      var scoRow = -1;
+      for (var sc = 1; sc < scoData.length; sc++) {
+        if (scoData[sc][0] === scoClientCode) { scoRow = sc + 1; break; }
+      }
+      if (scoRow === -1) throw new Error("登録されていない顧客コードです");
+
+      var scoValue = (scoStatusOptions && scoStatusOptions.length > 0) ? scoStatusOptions.join(",") : "";
+      scoSheet.getRange(scoRow, 7).setValue(scoValue); // G列：ステータス設定
+      return createJsonResponse({ success: true, clientCode: scoClientCode, statusOptions: scoStatusOptions || [] });
     }
 
     if (action === "get_map_data") {
@@ -106,7 +132,7 @@ function doPost(e) {
       var authData = authenticateClient(username, password);
       if (!authData) throw new Error("認証に失敗しました。");
       var mapData = fetchMapDataFromSheet(authData.sheetId);
-      return createJsonResponse({ success: true, clientName: authData.name, clientCode: authData.code, spreadsheetId: authData.sheetId, data: mapData });
+      return createJsonResponse({ success: true, clientName: authData.name, clientCode: authData.code, spreadsheetId: authData.sheetId, data: mapData, statusOptions: authData.statusOptions || [] });
     }
 
     if (action === "update_status") {
@@ -128,7 +154,8 @@ function doPost(e) {
 // =====================================================================
 // コアロジック：自動分割・不備分離・【重複カウントアップ】処理
 // =====================================================================
-function optimizeAndProcessCsv(sheetId, csvData) {
+function optimizeAndProcessCsv(sheetId, csvData, defaultStatus) {
+  defaultStatus = defaultStatus || "未訪問";
   var ss = SpreadsheetApp.openById(sheetId);
   var normalSheet = ss.getSheetByName("リスト");
   var errorSheet = ss.getSheetByName("住所不備リスト");
@@ -256,7 +283,7 @@ function optimizeAndProcessCsv(sheetId, csvData) {
 
     if (!isError) {
       // H列（[7]）に初期値の 1 をセット
-      normalDataToWrite.push([currentId, optimizedAddress, optimizedName, extractedLastName, lat, lng, "未訪問", 1, ""]);
+      normalDataToWrite.push([currentId, optimizedAddress, optimizedName, extractedLastName, lat, lng, defaultStatus, 1, ""]);
       existingMap[keyOptimized] = {
         row: normalSheet.getLastRow() + normalDataToWrite.length,
         count: 1,
@@ -356,7 +383,26 @@ function sendWelcomeEmail(name, email, username, password, sheetUrl) {
 function authenticateClient(username, password) {
   var data = SpreadsheetApp.openById(MASTER_SHEET_ID).getSheetByName("顧客マスタ").getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][4]) === username && String(data[i][5]) === password) return { code: data[i][0], sheetId: data[i][1], name: data[i][2] };
+    if (String(data[i][4]) === username && String(data[i][5]) === password) {
+      return { code: data[i][0], sheetId: data[i][1], name: data[i][2], statusOptions: parseStatusOptionsCell(data[i][6]) };
+    }
+  }
+  return null;
+}
+
+// 顧客マスタG列「ステータス設定」（カンマ区切り、例:"未配布,配布済み,チラシ禁止"）を配列に変換する。
+// 未設定の顧客は既定（未訪問/訪問済み＋見込み度A/B/C）のまま動作するよう null を返す。
+function parseStatusOptionsCell(raw) {
+  var s = String(raw || "").trim();
+  if (!s) return null;
+  var arr = s.split(",").map(function(v) { return v.trim(); }).filter(function(v) { return v; });
+  return arr.length > 0 ? arr : null;
+}
+
+function getClientStatusOptions(clientCode) {
+  var data = SpreadsheetApp.openById(MASTER_SHEET_ID).getSheetByName("顧客マスタ").getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === clientCode) return parseStatusOptionsCell(data[i][6]);
   }
   return null;
 }
