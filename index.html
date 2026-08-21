@@ -32,7 +32,16 @@
     * { box-sizing: border-box; }
     body { margin: 0; padding: 0; font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--c-bg); color: var(--c-text); -webkit-font-smoothing: antialiased; }
     #app-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; display: none; }
+    #app-container.is-maximized { position: fixed; inset: 0; z-index: 9999; width: 100vw; height: 100vh; }
     #map { height: 100%; width: 100%; }
+
+    /* ===== 最大化ボタン ===== */
+    #maximize-btn {
+      position: absolute; top: 70px; right: 16px; z-index: 1000; width: 38px; height: 38px; border-radius: 8px;
+      border: none; background: var(--c-surface); box-shadow: var(--shadow-md); cursor: pointer;
+      display: none; align-items: center; justify-content: center; color: var(--c-text);
+    }
+    #maximize-btn:hover { background: var(--c-primary-light); color: var(--c-primary-dark); }
 
     /* ===== ログイン画面 ===== */
     #login-panel {
@@ -193,6 +202,10 @@
     <div id="filter-container"></div>
     <div id="map"></div>
 
+    <button id="maximize-btn" title="画面を最大化">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+    </button>
+
     <button id="location-btn" title="現在地を取得">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="6"/></svg>
       <span id="location-btn-label">現在地</span>
@@ -284,6 +297,7 @@
 
           document.getElementById("app-header-client").textContent = (data.clientName || "") + " 様";
           document.getElementById("app-header").style.display = "flex";
+          document.getElementById("maximize-btn").style.display = "flex";
 
           setTimeout(initializeMap, 500);
         } else {
@@ -303,6 +317,55 @@
 
     document.getElementById("logout-btn").addEventListener("click", () => {
       if (confirm("ログアウトしますか？")) location.reload();
+    });
+
+    // 画面の最大化。まずブラウザ標準のFullscreen APIを試み、iframe埋め込み等で
+    // 権限ポリシーによりブロックされる環境では、CSSのposition:fixedによる
+    // 疑似最大化に自動フォールバックする（ブラウザAPIに依存しないため確実に動作する）。
+    function getFullscreenElement() {
+      return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+    }
+
+    function setPseudoMaximized(on) {
+      const el = document.getElementById("app-container");
+      el.classList.toggle("is-maximized", on);
+      if (map) setTimeout(() => google.maps.event.trigger(map, "resize"), 0);
+    }
+
+    document.getElementById("maximize-btn").addEventListener("click", () => {
+      const el = document.getElementById("app-container");
+      const isMaximized = getFullscreenElement() || el.classList.contains("is-maximized");
+
+      if (isMaximized) {
+        if (getFullscreenElement()) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+          if (exit) exit.call(document);
+        }
+        setPseudoMaximized(false);
+        return;
+      }
+
+      const request = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (request) {
+        Promise.resolve(request.call(el)).catch(err => {
+          console.warn("Fullscreen API が使用できないため疑似最大化に切り替えます:", err.message);
+          setPseudoMaximized(true);
+        });
+      } else {
+        setPseudoMaximized(true);
+      }
+    });
+
+    ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"].forEach(evt => {
+      document.addEventListener(evt, () => {
+        if (map) google.maps.event.trigger(map, "resize");
+      });
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.getElementById("app-container").classList.contains("is-maximized")) {
+        setPseudoMaximized(false);
+      }
     });
 
     // globalData[0]をそのまま中心にすると、列ずれ等で壊れた座標（緯度が90を超える等）の行が
